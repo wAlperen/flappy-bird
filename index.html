@@ -1,20 +1,239 @@
 <!DOCTYPE html>
 <html lang="tr">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Flappy Bird - Basit</title>
-  <link rel="stylesheet" href="style.css">
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no" />
+    <title>Flappy Bird - Modern Edition</title>
+    <style>
+        /* Senin paylaştığın CSS stili üzerinden geliştirildi */
+        * { box-sizing: border-box; font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial; }
+        html, body { height: 100%; margin: 0; background: linear-gradient(#70c5ce, #a0e7f0); overflow: hidden; }
+        
+        .wrap { height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; }
+        
+        canvas {
+            width: 360px; max-width: 92vw;
+            height: auto;
+            border-radius: 10px;
+            box-shadow: 0 8px 20px rgba(0,0,0,0.15);
+            background: #70c5ce;
+            display: block;
+            border: 2px solid rgba(255,255,255,0.3);
+        }
+
+        #ui { position: absolute; width: 360px; max-width: 92vw; pointer-events: none; display: flex; flex-direction: column; align-items: center; }
+        
+        #score {
+            font-size: 48px;
+            text-align: center;
+            color: #fff;
+            text-shadow: 0 2px 8px rgba(0,0,0,0.4);
+            margin-top: 20px;
+            font-weight: bold;
+        }
+
+        #msg {
+            margin-top: 100px;
+            text-align: center;
+            background: rgba(0,0,0,0.7);
+            color: #fff;
+            padding: 15px 25px;
+            border-radius: 12px;
+            pointer-events: auto;
+            cursor: pointer;
+            backdrop-filter: blur(4px);
+            border: 1px solid rgba(255,255,255,0.2);
+            transition: transform 0.1s;
+        }
+        
+        #msg:active { transform: scale(0.95); }
+
+        .hidden { display: none !important; }
+        .info { font-size: 13px; color: #033; opacity: 0.8; margin-top: 10px; text-align: center; }
+    </style>
 </head>
 <body>
-  <div class="wrap">
-    <canvas id="gameCanvas" width="400" height="600"></canvas>
-    <div id="ui">
-      <div id="score">0</div>
-      <div id="msg" class="hidden"></div>
+
+    <div class="wrap">
+        <canvas id="gameCanvas" width="400" height="600"></canvas>
+        <div id="ui">
+            <div id="score">0</div>
+            <div id="msg">BAŞLAMAK İÇİN DOKUN</div>
+        </div>
+        <footer class="info">Boşluk veya Ekrana Dokun = Zıpla</footer>
     </div>
-    <footer class="info">Boşluk / Ekrana dokun = zıpla · Yeniden başlatmak için tıkla</footer>
-  </div>
-  <script src="script.js"></script>
+
+<script>
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
+    const uiScore = document.getElementById('score');
+    const uiMsg = document.getElementById('msg');
+
+    const W = canvas.width;
+    const H = canvas.height;
+
+    // Oyun Ayarları
+    let frames = 0;
+    let pipes = [];
+    let score = 0;
+    let highScore = 0;
+    let running = false;
+    let gameOver = false;
+    let speed = 2;
+
+    const bird = {
+        x: 80, y: 300, r: 16, vy: 0,
+        gravity: 0.08, // Çok hızlı düşmemesi için optimize edildi
+        jump: -3.5,    // Zıplama yüksekliği dengelendi
+        rotation: 0,
+        update() {
+            if (!running) return;
+            this.vy += this.gravity;
+            this.y += this.vy;
+
+            // Dönüş efekti
+            this.rotation = Math.min(Math.PI/4, Math.max(-Math.PI/4, this.vy * 0.1));
+
+            // Yer ve tavan kontrolü
+            if (this.y + this.r >= H - 40) { this.y = H - 40 - this.r; doGameOver(); }
+            if (this.y - this.r <= 0) { this.y = this.r; this.vy = 0; }
+        },
+        draw() {
+            ctx.save();
+            ctx.translate(this.x, this.y);
+            ctx.rotate(this.rotation);
+            
+            // Kuş Gövdesi
+            ctx.fillStyle = '#FFD23F';
+            ctx.beginPath(); ctx.arc(0, 0, this.r, 0, Math.PI*2); ctx.fill();
+            ctx.strokeStyle = '#000'; ctx.lineWidth = 2; ctx.stroke();
+            
+            // Göz
+            ctx.fillStyle = '#fff';
+            ctx.beginPath(); ctx.arc(6, -5, 5, 0, Math.PI*2); ctx.fill();
+            ctx.fillStyle = '#000';
+            ctx.beginPath(); ctx.arc(8, -5, 2, 0, Math.PI*2); ctx.fill();
+            
+            // Gaga
+            ctx.fillStyle = '#FF8C42';
+            ctx.beginPath();
+            ctx.moveTo(12, 0); ctx.lineTo(22, -4); ctx.lineTo(22, 4);
+            ctx.closePath(); ctx.fill(); ctx.stroke();
+            
+            ctx.restore();
+        }
+    };
+
+    function spawnPipe() {
+        const gap = 200; // Borular arası boşluk
+        const minH = 50;
+        const topH = Math.random() * (H - gap - 150) + minH;
+        pipes.push({ x: W, top: topH, bottom: topH + gap, passed: false });
+    }
+
+    function resetGame() {
+        pipes = [];
+        bird.y = H / 2;
+        bird.vy = 0;
+        score = 0;
+        speed = 2.5;
+        frames = 0;
+        running = true;
+        gameOver = false;
+        uiScore.textContent = '0';
+        uiMsg.classList.add('hidden');
+    }
+
+    function doGameOver() {
+        running = false;
+        gameOver = true;
+        if (score > highScore) highScore = score;
+        uiMsg.innerHTML = `OYUN BİTTİ<br><span style="font-size:14px">Skor: ${score} | Rekor: ${highScore}</span><br>TEKRAR DENE`;
+        uiMsg.classList.remove('hidden');
+    }
+
+    function update() {
+        if (!running) return;
+        frames++;
+        bird.update();
+
+        if (frames % 90 === 0) spawnPipe();
+
+        for (let i = pipes.length - 1; i >= 0; i--) {
+            let p = pipes[i];
+            p.x -= speed;
+
+            // Çarpışma Testi
+            if (bird.x + bird.r > p.x && bird.x - bird.r < p.x + 60) {
+                if (bird.y - bird.r < p.top || bird.y + bird.r > p.bottom) {
+                    doGameOver();
+                }
+            }
+
+            // Skor Artışı
+            if (!p.passed && p.x + 60 < bird.x) {
+                p.passed = true;
+                score++;
+                uiScore.textContent = score;
+                if (score % 5 === 0) speed += 0.15; // Zorluk artışı
+            }
+
+            if (p.x + 60 < 0) pipes.splice(i, 1);
+        }
+    }
+
+    function draw() {
+        // Arka Plan (Canvas içi)
+        ctx.fillStyle = '#70c5ce';
+        ctx.fillRect(0, 0, W, H);
+
+        // Borular
+        pipes.forEach(p => {
+            ctx.fillStyle = '#4db848';
+            ctx.fillRect(p.x, 0, 60, p.top);
+            ctx.fillRect(p.x, p.bottom, 60, H - p.bottom);
+            
+            // Boru kenarları
+            ctx.strokeStyle = '#2d6a2a';
+            ctx.lineWidth = 3;
+            ctx.strokeRect(p.x, 0, 60, p.top);
+            ctx.strokeRect(p.x, p.bottom, 60, H - p.bottom);
+        });
+
+        // Yer
+        ctx.fillStyle = '#ded895';
+        ctx.fillRect(0, H - 40, W, 40);
+        ctx.fillStyle = '#2d6a2a';
+        ctx.fillRect(0, H - 44, W, 4);
+
+        bird.draw();
+    }
+
+    function loop() {
+        update();
+        draw();
+        requestAnimationFrame(loop);
+    }
+
+    // Girdi Yönetimi
+    function handleAction() {
+        if (gameOver || !running) {
+            resetGame();
+        } else {
+            bird.vy = bird.jump;
+        }
+    }
+
+    window.addEventListener('keydown', (e) => { if (e.code === 'Space') { e.preventDefault(); handleAction(); } });
+    window.addEventListener('pointerdown', (e) => { 
+        // Eğer tıklanan şey UI mesaj kutusu değilse veya oyun bitmişse işlemi yap
+        if (e.target.id !== 'msg' || gameOver || !running) {
+            handleAction();
+        }
+    });
+
+    // Başlangıç çizimi
+    loop();
+</script>
 </body>
 </html>
