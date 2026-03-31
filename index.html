@@ -79,11 +79,11 @@
     let highScore = 0;
     let running = false;
     let gameOver = false;
-    let speed = 2;
+    let speed = 2.5;
 
     const bird = {
         x: 80, y: 300, r: 16, vy: 0,
-        gravity: 0.08, // Çok hızlı düşmemesi için optimize edildi
+        gravity: 0.2, // Çok hızlı düşmemesi için optimize edildi
         jump: -3.5,    // Zıplama yüksekliği dengelendi
         rotation: 0,
         update() {
